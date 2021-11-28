@@ -35,7 +35,7 @@ Baixe este repositório conforme mostrado abaixo:
 git clone https://github.com/ewerton-silva00/monitoring-stack.git
 ```
 
-Acesse o diretório `monitoring-stack` e e execute o comando abaixo:
+Acesse o diretório `prometheus-monitoring-stack` e e execute o comando abaixo:
 ```bash
 docker-compose up --detach
 ```
