@@ -1,0 +1,236 @@
+version: '3.9'
+
+# https://docs.docker.com/compose/compose-file/compose-file-v3/#logging
+x-logging: &logging
+  logging:
+    driver: 'json-file'
+    options:
+      max-size: '50m'
+      max-file: '5'
+      tag: '{{.ImageName}}|{{.Name}}|{{.ImageFullID}}|{{.FullID}}'
+
+x-networking: &networking
+  networks:
+    - monitoring
+
+services:
+  # https://prometheus.io/docs/prometheus/latest/getting_started/
+  prometheus:
+    container_name: prometheus
+    image: prom/prometheus:v2.31.1
+    restart: unless-stopped
+    ports:
+      - target: 9090
+        published: 9090
+        protocol: tcp
+        mode: host
+    command:
+      - --config.file=/etc/prometheus/prometheus.yaml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=15d
+      - --web.enable-lifecycle
+      - --web.enable-admin-api
+    volumes:
+      - type: volume
+        source: prometheus-volume
+        target: /prometheus
+      - type: bind
+        source: ./prometheus
+        target: /etc/prometheus
+        read_only: true
+    depends_on:
+      - alertmanager
+    <<: *logging
+    <<: *networking
+
+  # https://prometheus.io/docs/alerting/latest/alertmanager/
+  alertmanager:
+    container_name: alertmanager
+    image: prom/alertmanager:v0.23.0
+    restart: unless-stopped
+    ports:
+      - target: 9093
+        published: 9093
+        protocol: tcp
+        mode: host
+    command:
+      - --config.file=/etc/alertmanager/alertmanager.yaml
+    volumes:
+      - type: bind
+        source: ./alertmanager
+        target: /etc/alertmanager
+        read_only: true
+    <<: *logging
+    <<: *networking
+
+  # https://grafana.com/docs/grafana/latest/administration/configure-docker/
+  grafana:
+    container_name: grafana
+    image: grafana/grafana:8.1.2
+    ports:
+      - target: 3000
+        published: 3000
+        protocol: tcp
+        mode: host
+    environment:
+      GF_INSTALL_PLUGINS: 'grafana-clock-panel,grafana-simple-json-datasource'
+    volumes:
+      - type: volume
+        source: grafana-volume
+        target: /var/lib/grafana
+      - type: bind
+        source: ./grafana/provisioning
+        target: /etc/grafana/provisioning
+        read_only: true
+    depends_on:
+      - prometheus
+      - loki
+    <<: *logging
+    <<: *networking
+
+  # https://grafana.com/docs/loki/latest/
+  loki:
+    container_name: loki
+    image: grafana/loki:2.4.1
+    restart: unless-stopped
+    ports:
+      - target: 3100
+        published: 3100
+        protocol: tcp
+        mode: host
+    command:
+      - -config.file=/etc/loki/loki.yaml
+    volumes:
+      - type: bind
+        source: ./loki
+        target: /etc/loki
+        read_only: true
+      - type: volume
+        source: loki-volume
+        target: /loki
+    <<: *logging
+    <<: *networking
+
+  # https://grafana.com/docs/loki/latest/clients/promtail/
+  promtail:
+    container_name: promtail
+    image: grafana/promtail:2.4.1
+    restart: unless-stopped
+    ports:
+      - target: 9080
+        published: 9080
+        protocol: tcp
+        mode: host
+    command:
+      - -config.file=/etc/promtail/promtail.yaml
+    volumes:
+      - type: bind
+        source: ./promtail
+        target: /etc/promtail
+        read_only: true
+      - type: bind
+        source: /var/lib/docker/containers
+        target: /var/lib/docker/contauiners
+        read_only: true
+    depends_on:
+      - loki
+    <<: *logging
+    <<: *networking
+
+  # https://github.com/prymitive/karma
+  karma:
+    container_name: karma
+    image: ghcr.io/prymitive/karma:v0.93
+    restart: unless-stopped
+    ports:
+      - target: 8080
+        published: 8080
+        protocol: tcp
+        mode: host
+    command:
+      - --config.file=/docs/karma.yaml
+    volumes:
+      - type: bind
+        source: ./karma
+        target: /docs
+        read_only: true
+    depends_on:
+      - alertmanager
+    <<: *logging
+    <<: *networking
+
+  # https://github.com/google/cadvisor
+  cadvisor:
+    container_name: cadvisor
+    image: gcr.io/cadvisor/cadvisor:v0.38.8
+    restart: unless-stopped
+    privileged: true
+    devices:
+      - /dev/kmsg
+    volumes:
+      - type: bind
+        source: /
+        target: /rootfs
+        read_only: true
+      - type: bind
+        source: /var/run
+        target: /var/run
+      - type: bind
+        source: /sys
+        target: /sys
+        read_only: true
+      - type: bind
+        source: /sys/fs/cgroup
+        target: /sys/fs/cgroup
+        read_only: true
+      - type: bind
+        source: /var/lib/docker
+        target: /var/lib/docker
+        read_only: true
+      - type: bind
+        source: /dev/disk
+        target: /dev/disk
+        read_only: true
+    <<: *logging
+    <<: *networking
+
+  # https://github.com/prometheus/node_exporter
+  node_exporter:
+    container_name: node_exporter
+    image: prom/node-exporter:v1.3.0
+    restart: unless-stopped
+    command:
+      - --path.procfs=/host/proc
+      - --path.rootfs=/rootfs
+      - --path.sysfs=/host/sys
+      - --collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)
+    volumes:
+      - type: bind
+        source: /
+        target: /host
+        read_only: true
+        bind:
+          propagation: rslave
+    network_mode: host
+    pid: host
+    <<: *logging
+
+# https://docs.docker.com/compose/compose-file/compose-file-v3/#volume-configuration-reference
+volumes:
+  prometheus-volume:
+    driver: local
+    name: prometheus-volume
+  grafana-volume:
+    driver: local
+    name: grafana-volume
+  loki-volume:
+    driver: local
+    name: loki-volume
+
+# https://docs.docker.com/compose/compose-file/compose-file-v3/#network-configuration-reference
+networks:
+  monitoring:
+    name: monitoring
+    driver: bridge
+    driver_opts:
+      com.docker.network.bridge.host_binding_ipv4: 127.0.0.1

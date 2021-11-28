@@ -1,0 +1,17 @@
+# https://github.com/prymitive/karma/blob/main/docs/CONFIGURATION.md
+alertmanager:
+  interval: 15s
+  servers:
+    - name: dev
+      uri: http://alertmanager:9093
+      timeout: 5s
+      proxy: false
+      readonly: false
+
+authentication:
+  basicAuth:
+    users:
+      - username: admin
+        password: admin
+      - username: karma
+        password: karma
