@@ -32,7 +32,7 @@ Este projeto consiste em prover um ambiente local de estudo das ferramentas abai
 
 Baixe este repositório conforme mostrado abaixo:
 ```bash
-git clone https://github.com/ewerton-silva00/monitoring-stack.git
+git clone https://github.com/ewerton-silva00/prometheus-monitoring-stack.git
 ```
 
 Acesse o diretório `prometheus-monitoring-stack` e e execute o comando abaixo:
